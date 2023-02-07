@@ -1,0 +1,264 @@
+---
+title: "Lysates_metabar_for_PLOSone_LabProtocols"
+output: html_document
+date: "2022-11-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos = list(CRAN="http://cran.rstudio.com/"))
+setwd('~/Desktop/Malaise_Exp_IV/For_LAB_protocols/')
+if (!require(devtools)) install.packages("devtools")
+#devtools::install_github("yanlinlin82/ggvenn")
+install.packages("wesanderson")
+install.packages("UpSetR")
+install.packages("vegan")
+install.packages("reshape2") 
+library('vegan')
+library('UpSetR')
+library('reshape2')
+library('ggplot2')
+library('ggvenn')
+library("wesanderson")
+```
+This data come from the "15 samples" experiment
+
+## Data formating
+### Load raw data and remove 0's
+```{r raw counts}
+tab <- read.delim("Metabar_counts_LYSATES.csv", sep=";", row.names = 1)
+tab_no0 <- tab[rowSums(tab[])>0,]
+write.table(tab_no0,"Metabar_counts_LYSATES_no0.tsv", sep="\t")
+```
+
+### Number of reads per sample: minimum, maximum, average:
+```{r stats}
+min(colSums(tab_no0))
+max(colSums(tab_no0))
+mean(colSums(tab_no0))
+```
+
+### Getting taxonomy file
+Export ASV list to a separate file and get taxonomy assignement file for those ASVs
+```{bash ASVs_new}
+cut -f1 Metabar_counts_LYSATES_no0.tsv > ASVs.txt
+sed 's/"//g' ASVs.txt > ASV_list.txt
+#grep -wFf ASV_list.txt /Users/elzbiwas/Desktop/August22_IBA_results/MBs_12.merged.taxa.tsv > Metabar_LYSATES_taxa.tsv
+```
+
+## Summary stats
+### Total number of ASVs:
+```{r ASVs}
+length(rownames(tab_no0))
+```
+
+### Wet weight of a sample (proxy for biomass) and the number of reads per sample:
+-- *Samples sorted by habitat and by sampling date (increasing)
+-- *Wet-weight shown as white diamonds
+```{r reads, echo=FALSE}
+con <- read.delim("LYSATES_condition.csv", sep=";", row.names = 1)
+
+p <- ggplot(data=con, aes(x=RunNumDate, y=TotalSeqs, fill=Habitat)) +
+  geom_bar(stat="identity") + theme_minimal() +
+  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*101000), shape=23, fill="white", color="black") +
+  scale_fill_manual(values=wes_palette(n=3, name="GrandBudapest1")) +
+  scale_x_continuous(name="Sample", breaks=con$RunNumDate,labels=con$Samples_Name) +
+  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./101000, name = "Wet weight [mg]")) +
+  theme(axis.text.x = element_text(angle=90)) #+
+#  ggtitle("Figure 2")
+p
+ggsave(filename = "Fig2.jpg", device="jpeg", width = 9, height = 5.5, p)
+
+```
+## ASVs shared between habitats
+
+```{r divide, echo=FALSE}
+#Divide samples according to habitats
+con <- read.delim("LYSATES_condition.csv", sep=";", row.names = 1)
+
+W <- rownames(subset(con, con$Habitat=="Wetland"))
+WetlandT <- subset(tab_no0[,W])
+Wetland <- rownames(WetlandT[rowSums(WetlandT[])>0,])
+
+G <- rownames(subset(con, con$Habitat=="Grassland"))
+GrasslandT <- subset(tab_no0[,G])
+Grassland <- rownames(GrasslandT[rowSums(GrasslandT[])>0,])
+
+For <- rownames(subset(con, con$Habitat=="Forest"))
+ForestT <- subset(tab_no0[,For])
+Forest <- rownames(ForestT[rowSums(ForestT[])>0,])
+```
+
+### Venn diagram showing numbers of shared and habitat-unique ASVs
+```{r venn, echo=FALSE}
+x <- list(Forest=Forest, Grassland=Grassland, Wetland=Wetland)
+v<- ggvenn(x, fill_color = wes_palette("GrandBudapest1"),
+  stroke_size = 0.5, set_name_size = 6) #+
+  #ggtitle("Figure 4")
+v
+ggsave(filename = "Fig4.jpg", device="jpeg", width = 6, height = 5.5, v)
+```
+
+
+### Upset plot showing numbers of ASVs shared between different habitats
+Not sure I will include it after all. 
+I wanted to extend this plot with splitting each bar into fractions representative of different insect orders.
+However, this has proven difficult to implement. Perhaps not worth the time.
+
+```{r upset}
+Orders <- read.table("Orders_input_UpsetR.txt", sep="\t", row.names = 1, header=T)
+
+upset(fromList(Orders[,2:4]), order.by = "freq", group.by = "sets")
+
+```
+
+## Ordination
+### Calculating a non-metric multidimensional scaling (nMDS)
+```{r NMDS_calculate, echo=FALSE, include=FALSE}
+counts <- read.delim("Metabar_counts_LYSATES_no0.tsv", sep="\t", row.names = 1)
+couch <- as.data.frame(t(counts))
+relAbund <- decostand(couch, method = "total")
+DistMatrix <- vegdist(relAbund, method = "bray")
+Mat_rix <- as.matrix(DistMatrix, labels = T)
+write.csv(Mat_rix, "B-C_distance_matrix.csv")
+
+NMS <-  metaMDS(DistMatrix, distance = "bray", k = 3, trymax = 50, wascores = TRUE)
+```
+
+### Stress factor
+```{r NMDS_calculate2, echo=FALSE}
+NMS$stress
+```
+As a rule of thumb literature has identified the following cut-off values for stress-level:
+
+Higher than 0.2 is poor (risks for false interpretation).
+0.1 - 0.2 is fair (some distances can be misleading for interpretation).
+0.05 - 0.1 is good (can be confident in inferences from plot).
+Less than 0.05 is excellent (this can be rare).
+
+### Plotting nMDS
+```{r NMDS_Plot, echo=FALSE}
+con2 <- read.delim("LYSATES_condition_reordered.csv", sep=";")
+data.scores <- as.data.frame(scores(NMS))  
+data.scores$sample <- con2$Sample_ID
+data.scores$grp1 <- con2$Habitat
+data.scores$grp2 <- con2$Date
+
+n<- ggplot(data=data.scores, 
+  aes(x=NMDS1, y=NMDS2, fill=factor(grp1), shape=factor(grp2), color=factor(grp1))) + 
+  geom_point(size=3) +
+  scale_shape_manual(values=c(21,22,23,24,25)) +
+  scale_fill_manual(values = wes_palette("GrandBudapest1")) +
+  scale_color_manual(values = wes_palette("GrandBudapest1")) +
+  guides(fill = "none") +
+  coord_equal() + labs(color="Habitat", shape="Sampling date") +
+  theme_bw() #+
+  #ggtitle("Figure 5")
+n
+ggsave(filename = "Fig5.jpg", device="jpeg", width = 9, height = 5.5, n)
+```
+
+## Relative read abundance per sample
+```{r barplot, echo=FALSE}
+counts <- read.delim("Metabar_counts_LYSATES_no0.csv", sep=";", row.names = 1)
+couch <- as.data.frame(t(counts))
+couch$X <- rownames(couch)
+
+l <- melt(couch, id.vars = "X", variable.name = "ASVs")
+
+o <- ggplot(l, aes(x = X, y=value, fill = ASVs)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  labs(y = "Fraction", x="") +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=90)) +
+  ggtitle("Relative abundance of ASVs per sample")
+
+ggsave(filename = "Fig3.pdf", device="pdf", width = 9, height = 5.5, o)
+```
+
+### ASVs grouped per order
+```{r barplot-order, echo=FALSE}
+orders <- read.delim("Counts_per_order_uncorrected.csv", sep=";", row.names = 1)
+ord <- as.data.frame(t(orders))
+ord$X <- rownames(ord)
+lo <- melt(ord, id.vars = "X", variable.name = "Orders")
+
+r<-ggplot(lo, aes(x = X, y=value, fill = Orders)) + 
+  geom_bar(position="fill", stat = "identity") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  labs(y = "Fraction", x="") +
+  #theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=90)) #+
+#  ggtitle("Fig 6 - Relative abundance of orders per sample")
+r
+ggsave(filename = "Fig6.jpg", device="jpeg", width = 9, height = 5.5, r)
+```
+
+## Read abundance per sample 
+### Number of reads per sample - uncorrected
+```{r barplot2, echo=FALSE}
+b<-ggplot(lo, aes(x = X, y=value, fill = Orders)) + 
+  geom_bar(stat = "identity") + 
+  #scale_fill_manual(values = palette) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*100000), shape=23, fill="white", color="black") +
+  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./100000, name = "Wet weight [mg]")) +
+  labs(y = "Number of reads", x="") +
+  ggtitle("Uncorrected numbers of reads") +
+  #theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=90)) #+
+#  ggtitle("Fig. 7 - ASVs grouped per order")
+b
+ggsave(filename = "Fig7.jpg", device="jpeg", width = 9, height = 5.5, b)
+```
+
+
+
+```{r barplot3, echo=FALSE, include=FALSE}
+correct <- read.delim("Metabar_CORRECTED_LYSATES_no0.csv", sep=";", row.names = 1)
+con <- read.delim("LYSATES_condition.csv", sep=";", row.names = 1)
+cor4 <- as.data.frame(t(correct))
+cor4$X <- rownames(cor4)
+
+lc <- melt(cor4, id.vars = "X", variable.name = "ASVs")
+
+sp<- ggplot(lc, aes(x = X, y=value, fill = ASVs)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*15), shape=23, fill="white", color="black") +
+  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./15, name = "Wet weight [mg]")) +
+  labs(y = "Number of reads", x="") +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=90)) #+
+#  ggtitle("Fig 8 - Spike-in corrected numbers of reads")
+sp
+#ggsave(filename = "Fig8.jpg", device="jpeg", width = 9, height = 5.5, sp)
+```
+
+### Number of reads per sample - corrected
+
+```{r barplot4, echo=FALSE}
+corr <- read.delim("Counts_Corrected_per_order.csv", sep=";", row.names = 1)
+cor5 <- as.data.frame(t(corr))
+cor5$X <- rownames(cor5)
+
+lp <- melt(cor5, id.vars = "X", variable.name = "Orders")
+
+spi<- ggplot(lp, aes(x = X, y=value, fill = Orders)) + 
+  geom_bar(stat="identity") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
+  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*15), shape=23, fill="white", color="black") +
+  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./15, name = "Wet weight [mg]")) +
+  labs(y = "Number of reads", x="") +
+  #theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=90)) +
+  ggtitle("Spike-in corrected numbers of reads")
+spi
+ggsave(filename = "Fig8.jpg", device="jpeg", width = 9, height = 5.5, spi)
+
+```
+
+
+
+

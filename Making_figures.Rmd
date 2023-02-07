@@ -7,7 +7,7 @@ date: "2022-11-29"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 options(repos = list(CRAN="http://cran.rstudio.com/"))
-setwd('~/Desktop/Malaise_Exp_IV/For_LAB_protocols/')
+setwd('~/')
 if (!require(devtools)) install.packages("devtools")
 #devtools::install_github("yanlinlin82/ggvenn")
 install.packages("wesanderson")

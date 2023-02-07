@@ -1,4 +1,11 @@
-This repository is an additiona to Lab protocol titled "..." published on ... .
+Lab protocol titled "..." published in ... .
+
+This is the source code repository accompanying the paper.
+
+Corresponding author: Elzbieta Iwaszkeiwicz-Eggebrecht, ela.iwaszkiewicz (at) nrm.se
+
+##CONTENTS:
 It contains raw data and R markdown with code to produce figures.
 It also has three Krona plot HTML files to visualize insect diversity in your browser - an addition to Fig. 3 in the paper.
 
+##HOW TO DOWNLOAD:

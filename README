@@ -10,4 +10,4 @@ It also has three Krona plot HTML files to visualize insect diversity in your br
 
 ##HOW TO DOWNLOAD:
 
-git@github.com:ela-iwaszkiewicz/Lab_protocols.git
+git clone https://github.com/ela-iwaszkiewicz/Lab_protocols.git

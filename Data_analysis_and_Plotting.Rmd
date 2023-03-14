@@ -10,15 +10,18 @@ options(repos = list(CRAN="http://cran.rstudio.com/"))
 if (!require(devtools)) install.packages("devtools")
 #devtools::install_github("yanlinlin82/ggvenn")
 install.packages("wesanderson")
-install.packages("UpSetR")
 install.packages("vegan")
 install.packages("reshape2") 
+install.packages("scales")
+install.packages("RColorBrewer")
+
 library('vegan')
-library('UpSetR')
 library('reshape2')
 library('ggplot2')
 library('ggvenn')
 library("wesanderson")
+library("scales")
+library("RColorBrewer")
 ```
 This data come from the "15 samples" experiment
 
@@ -41,7 +44,7 @@ mean(colSums(tab_no0))
 Export ASV list to a separate file and get taxonomy assignement file for those ASVs
 ```{bash ASVs_new, include=FALSE}
 cut -f1 data/Metabar_counts_LYSATES_no0.tsv > data/ASVs.txt
-sed 's/"//g' data/ASVs.txt > ASV_list.txt
+sed 's/"//g' data/ASVs.txt > data/ASV_list.txt
 #grep -wFf ASV_list.txt /Users/elzbiwas/Desktop/August22_IBA_results/MBs_12.merged.taxa.tsv > Metabar_LYSATES_taxa.tsv
 ```
 
@@ -56,21 +59,38 @@ length(rownames(tab_no0))
 -- *Wet-weight shown as white diamonds
 ```{r reads, echo=FALSE}
 con <- read.delim("data/LYSATES_condition.csv", sep=";", row.names = 1)
-
-p <- ggplot(data=con, aes(x=RunNumDate, y=TotalSeqs, fill=Habitat)) +
+col<-wes_palette(n=3, name="GrandBudapest1")
+p <- ggplot(data=con, 
+            aes(x=Sample_order, y=TotalSeqs, fill=Habitat)
+            ) +
   geom_bar(stat="identity", color="black") + theme_minimal() +
-  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*101000), shape=23, fill="white", color="black") +
+  geom_point(data=con, 
+             aes(x=Sample_order, y=Wet_weight*101000), 
+             shape=23, size=2, fill="white", color="black") +
   scale_fill_manual(values=wes_palette(n=3, name="GrandBudapest1")) +
-  scale_x_continuous(name="Sample", breaks=con$RunNumDate,labels=con$Samples_Name) +
-  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./101000, name = "Wet weight [mg]")) +
-  theme(axis.text.x = element_text(angle=90)) #+
-#  ggtitle("Figure 2")
+ # theme(legend.position = "top") + theme(legend.title = element_blank()) +
+  scale_x_discrete(name="Sampling date", labels=con$Date) +  
+  scale_y_continuous(name="Number of reads", labels = comma, sec.axis = sec_axis(~./101000, name = "Wet weight [g]")) + 
+  theme(axis.text.x = element_text(angle=90), axis.text.y = element_text(face="bold"))
 p
-ggsave(filename = "figures/Fig2.jpg", device="jpeg", width = 9, height = 5.5, p)
+ggsave(filename = "figures/Fig3a.jpg", device="jpeg", width = 9, height = 5.5, p)
 
 ```
-## ASVs shared between habitats
 
+```{r Taxonomy, echo=FALSE}
+As <- read.delim("data/Percent_of_ASVs.csv", sep=";", header=T)
+a <- ggplot(data=As, aes(x=Taxonomic_level, y=Percent_of_ASVs, fill=Category)) + 
+      scale_x_discrete(name="Taxonomic level", limits=c("Species", "Genus", "Family", "Order", "Class", "Phylum", "Kingdom")) +
+      scale_y_continuous(name="Percent of ASVs with assignment") +
+      geom_bar(stat="identity", color="black", fill="#EED5D2") + 
+      theme(legend.position="none") +
+      theme_minimal() +
+      coord_flip()
+a
+ggsave(filename = "figures/Fig3b.jpg", device="jpeg", width = 3.5, height = 4, a)
+```
+
+## ASVs shared between habitats
 ```{r divide, echo=FALSE}
 #Divide samples according to habitats
 con <- read.delim("data/LYSATES_condition.csv", sep=";", row.names = 1)
@@ -92,17 +112,21 @@ Forest <- rownames(ForestT[rowSums(ForestT[])>0,])
 ```{r venn, echo=FALSE}
 x <- list(Forest=Forest, Grassland=Grassland, Wetland=Wetland)
 v<- ggvenn(x, fill_color = wes_palette("GrandBudapest1"),
-  stroke_size = 0.5, set_name_size = 6) #+
-  #ggtitle("Figure 4")
+  stroke_size = 0.5, set_name_size = 6)
 v
-ggsave(filename = "figures/Fig4.jpg", device="jpeg", width = 6, height = 5.5, v)
+ggsave(filename = "figures/Fig3d.jpg", device="jpeg", width = 6, height = 5.5, v)
 ```
 
-
-### Upset plot showing numbers of ASVs shared between different habitats
-Not sure I will include it after all. 
-I wanted to extend this plot with splitting each bar into fractions representative of different insect orders.
-However, this has proven difficult to implement. Perhaps not worth the time.
+### Getting a list of ASVs shared between all habitats (Should be 50 ASVs)
+```{r intersect, echo=FALSE, include=FALSE}
+x <- list(Forest=Forest, Grassland=Grassland, Wetland=Wetland)
+sharedFG <- intersect(Forest, Grassland) 
+sharedGW <- intersect(Grassland, Wetland)
+sharedWF <- intersect(Wetland, Forest)
+sharedx <- intersect(sharedFG, sharedGW)
+shared <- intersect(sharedx, sharedWF)
+shared
+```
 
 ## Ordination
 ### Calculating a non-metric multidimensional scaling (nMDS)
@@ -147,12 +171,13 @@ n<- ggplot(data=data.scores,
   theme_bw() #+
   #ggtitle("Figure 5")
 n
-ggsave(filename = "figures/Fig5.jpg", device="jpeg", width = 9, height = 5.5, n)
+ggsave(filename = "figures/Fig3c.jpg", device="jpeg", width = 9, height = 5.5, n)
 ```
 
 ### ASVs grouped per order
 ```{r barplot-order, echo=FALSE}
-orders <- read.delim("data/Counts_per_order_uncorrected.csv", sep=";", row.names = 1)
+#orders <- read.delim("data/Counts_per_order_uncorrected.csv", sep=";", row.names = 1)
+orders <- read.delim("data/Metabar_counts_per_order_NoSpikes.txt", sep="\t", row.names = 1)
 ord <- as.data.frame(t(orders))
 ord$X <- rownames(ord)
 lo <- melt(ord, id.vars = "X", variable.name = "Orders")
@@ -160,36 +185,38 @@ lo <- melt(ord, id.vars = "X", variable.name = "Orders")
 r<-ggplot(lo, aes(x = X, y=value, fill = Orders)) + 
   geom_bar(position="fill", stat = "identity", color="black") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
-  labs(y = "Fraction", x="") +
-  #theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle=90)) #+
-#  ggtitle("Fig 6 - Relative abundance of orders per sample")
+  scale_x_discrete(name="", labels=con$Name) +
+  labs(y = "Fraction", x="") + 
+  theme(axis.text.x = element_text(angle=90), axis.text.y = element_text(face="bold")) +
+  ggtitle("a) Relative abundances")
 r
-ggsave(filename = "figures/Fig6.jpg", device="jpeg", width = 9, height = 5.5, r)
+ggsave(filename = "figures/Fig5a.jpg", device="jpeg", width = 9, height = 5.5, r)
 ```
 
-## Read abundance per sample 
-### Number of reads per sample - uncorrected
-```{r barplot2, echo=FALSE}
-b<-ggplot(lo, aes(x = X, y=value, fill = Orders)) + 
+## Read abundance per sample = Wet-weight corrected
+### Number of reads per sample by order - uncorrected
+```{r barplot Weight, echo=FALSE}
+cor <- read.delim("data/Metabar_wetweight_corrected.txt", sep="\t", row.names = 1)
+corW <- as.data.frame(t(cor))
+corW$X <- rownames(corW)
+lw <- melt(corW, id.vars = "X", variable.name = "Orders")
+
+w<-ggplot(lw, aes(x = X, y=value, fill = Orders)) + 
   geom_bar(stat = "identity", color="black") + 
-  #scale_fill_manual(values = palette) +
   theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
-  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*100000), shape=23, fill="white", color="black") +
-  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./100000, name = "Wet weight [mg]")) +
-  labs(y = "Number of reads", x="") +
-  ggtitle("Uncorrected numbers of reads") +
-  #theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle=90)) #+
-#  ggtitle("Fig. 7 - ASVs grouped per order")
-b
-ggsave(filename = "figures/Fig7.jpg", device="jpeg", width = 9, height = 5.5, b)
+  scale_y_continuous(name="Weight-adjusted number of reads") +
+  scale_x_discrete(name="", labels=con$Name) +
+  labs(y = "Wet-weight", x="") +
+  ggtitle("b) Wet weight adjusted numbers of reads") +
+  theme(axis.text.x = element_text(angle=90), axis.text.y = element_text(face="bold"))
+w
+ggsave(filename = "figures/Fig5b.jpg", device="jpeg", width = 9, height = 5.5, w)
 ```
 
-### Number of reads per sample - corrected
 
+### Number of reads per sample - spike-in corrected
 ```{r barplot4, echo=FALSE}
-corr <- read.delim("data/Counts_Corrected_per_order.csv", sep=";", row.names = 1)
+corr <- read.delim("data/Counts_per_Order_Spike-corrected.csv", sep=";", row.names = 1)
 cor5 <- as.data.frame(t(corr))
 cor5$X <- rownames(cor5)
 
@@ -198,16 +225,65 @@ lp <- melt(cor5, id.vars = "X", variable.name = "Orders")
 spi<- ggplot(lp, aes(x = X, y=value, fill = Orders)) + 
   geom_bar(stat="identity", color="black") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
-  geom_point(data=con, aes(x=RunNumDate, y=Wet_weight*15), shape=23, fill="white", color="black") +
-  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./15, name = "Wet weight [mg]")) +
+  geom_point(data=con, aes(x=Sample_order, y=Wet_weight*1), shape=23, sze=2, fill="white", color="black") +
+  scale_y_continuous(name="Number of reads", sec.axis = sec_axis(~./1, name = "Wet weight [g]")) +
+  scale_x_discrete(name="", labels=con$Name) +
   labs(y = "Number of reads", x="") +
-  #theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle=90)) +
-  ggtitle("Spike-in corrected numbers of reads")
+  theme(axis.text.x = element_text(angle=90), axis.text.y = element_text(face="bold")) +
+  ggtitle("c) Spike-in corrected numbers of reads")
 spi
-ggsave(filename = "figures/Fig8.jpg", device="jpeg", width = 9, height = 5.5, spi)
-
+ggsave(filename = "figures/Fig5c.jpg", device="jpeg", width = 9, height = 5.5, spi)
 ```
+
+
+## Ordination on raw ASV data excluding spike-ins
+### Calculating a non-metric multidimensional scaling (nMDS)
+```{r NMDS_calculate_noSPIKE, echo=FALSE, include=FALSE}
+countS <- read.delim("data/Metabar_counts_LYSATES_no0_NoSpike.csv", sep=";", row.names = 1)
+coucH <- as.data.frame(t(countS))
+relAbunD <- decostand(coucH, method = "total")
+DistMatriX <- vegdist(relAbunD, method = "bray")
+Mat_riX <- as.matrix(DistMatriX, labels = T)
+write.csv(Mat_riX, "data/B-C_distance_matrix_NoSpike.csv")
+
+NMs <-  metaMDS(DistMatriX, distance = "bray", k = 3, trymax = 50, wascores = TRUE)
+```
+
+### Stress factor
+```{r NMDS_calculate_noSPIKE2, echo=FALSE}
+NMs$stress
+```
+As a rule of thumb literature has identified the following cut-off values for stress-level:
+
+Higher than 0.2 is poor (risks for false interpretation).
+0.1 - 0.2 is fair (some distances can be misleading for interpretation).
+0.05 - 0.1 is good (can be confident in inferences from plot).
+Less than 0.05 is excellent (this can be rare).
+
+### Plotting nMDS without spike-ins
+```{r NMDS_Plot_noSPIKE, echo=FALSE}
+con2 <- read.delim("data/LYSATES_condition_reordered.csv", sep=";")
+data.scoreS <- as.data.frame(scores(NMs))  
+data.scoreS$sample <- con2$Sample_order
+data.scoreS$grp1 <- con2$Habitat
+data.scoreS$grp2 <- con2$Date
+
+n<- ggplot(data=data.scoreS, 
+  aes(x=NMDS1, y=NMDS2, fill=factor(grp1), shape=factor(grp2), color=factor(grp1))) + 
+  geom_point(size=3) +
+  scale_shape_manual(values=c(21,22,23,24,25)) +
+  scale_fill_manual(values = wes_palette("GrandBudapest1")) +
+  scale_color_manual(values = wes_palette("GrandBudapest1")) +
+  guides(fill = "none") +
+  coord_equal() + labs(color="Habitat", shape="Sampling date") +
+  theme_bw() #+
+  #ggtitle("Figure 5")
+n
+ggsave(filename = "figures/Fig5.jpg", device="jpeg", width = 9, height = 5.5, n)
+```
+
+
+
 
 
 

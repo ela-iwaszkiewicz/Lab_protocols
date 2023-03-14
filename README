@@ -1,8 +1,10 @@
-Lab protocol titled "..." published in ... .
+Lab protocol titled "FAVIS: Fast And Versatile protocol for non-destructive metabarcoding of bulk Insect Samples" published in ... .
 
 This is the source code repository accompanying the paper.
 
-Corresponding author: Elzbieta Iwaszkiewicz-Eggebrecht, ela.iwaszkiewicz (at) nrm.se
+Corresponding authors: 
+  Andreia Miraldo, andreia.miraldo (at) nrm.se
+  Elzbieta Iwaszkiewicz-Eggebrecht, ela.iwaszkiewicz (at) nrm.se
 
 ##CONTENTS:
 It contains raw data and R markdown with code to produce figures.
